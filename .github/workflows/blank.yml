@@ -1,124 +1,201 @@
-name: 5-Parallel-RDP-VBox-Downloader
+name: Ultimate-Win10-CRD-Counter-Optimized
+
+
 
 on: 
+
   workflow_dispatch:
 
+
+
 jobs:
+
   build:
+
     runs-on: windows-2022
-    # استراتيجية لتشغيل 5 جوب في نفس الوقت
-    strategy:
-      fail-fast: false
-      max-parallel: 5
-      matrix:
-        include:
-          # الجوب الأول: الرابط الأول + الكود الأساسي
-          - id: 1
-            url: "https://huggingface.co/datasets/hiodas94/rdp/resolve/main/win.zip"
-          # الجوب الثاني: الرابط الثاني + CRD_CODE1
-          - id: 2
-            url: "https://huggingface.co/datasets/swelam100/rdp/resolve/main/win.zip"
-          # الجوب الثالث: الرابط الثالث + CRD_CODE2
-          - id: 3
-            url: "https://huggingface.co/datasets/gfdg34fsd/rdp/resolve/main/win.zip"
-          # الجوب الرابع: الرابط الرابع + CRD_CODE3
-          - id: 4
-            url: "https://huggingface.co/datasets/sjkhfuk/rdp/resolve/main/win.zip"
-          # الجوب الخامس: الرابط الخامس + CRD_CODE4
-          - id: 5
-            url: "https://huggingface.co/datasets/swe1000/rdp/resolve/main/win.zip"
 
     steps:
+
+      
+
       # -----------------------------------------------------------
-      # خطوة 1: تثبيت المتطلبات (Chrome, CRD, VirtualBox)
+
+      # خطوة 1: تثبيت المتطلبات الأساسية
+
       # -----------------------------------------------------------
-      - name: Install Prerequisites
+
+      - name: Install Prerequisites (Chrome, CRD, VBox)
+
         shell: pwsh
+
         run: |
+
           Write-Host "⬇️ Downloading Chrome..."
+
           Invoke-WebRequest -Uri "https://dl.google.com/chrome/install/latest/chrome_installer.exe" -OutFile "chrome_installer.exe"
+
           Start-Process -FilePath "chrome_installer.exe" -Args "/silent /install" -Wait
+
           
+
           Write-Host "⬇️ Downloading CRD Host..."
+
           Invoke-WebRequest -Uri "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi" -OutFile "crd.msi"
+
           Start-Process -FilePath "msiexec.exe" -Args "/i crd.msi /quiet /qn" -Wait
 
+
+
           Write-Host "⬇️ Downloading VirtualBox..."
+
           $vboxUrl = "https://download.virtualbox.org/virtualbox/6.1.48/VirtualBox-6.1.48-159471-Win.exe"
+
           (New-Object System.Net.WebClient).DownloadFile($vboxUrl, "VirtualBox-Setup.exe")
+
           Start-Process -FilePath "VirtualBox-Setup.exe" -Args "--silent --ignore-reboot" -Wait
+
           Write-Host "✅ All Software Installed Successfully."
 
-      # -----------------------------------------------------------
-      # خطوة 2: اختيار كود CRD المناسب وتشغيل الاتصال
-      # -----------------------------------------------------------
-      - name: Select Code and Start CRD
-        shell: pwsh
-        env:
-          # تمرير جميع الأسرار المحتملة كمتغيرات بيئة
-          MAIN_CODE: ${{ secrets.CRD_CODE }}
-          CODE_1: ${{ secrets.CRD_CODE1 }}
-          CODE_2: ${{ secrets.CRD_CODE2 }}
-          CODE_3: ${{ secrets.CRD_CODE3 }}
-          CODE_4: ${{ secrets.CRD_CODE4 }}
-          PIN: ${{ secrets.CRD_PIN }}
-          JOB_ID: ${{ matrix.id }}
-        run: |
-          # منطق اختيار الكود بناءً على رقم الجوب
-          if ($env:JOB_ID -eq 1) { $SelectedCode = $env:MAIN_CODE }
-          elseif ($env:JOB_ID -eq 2) { $SelectedCode = $env:CODE_1 }
-          elseif ($env:JOB_ID -eq 3) { $SelectedCode = $env:CODE_2 }
-          elseif ($env:JOB_ID -eq 4) { $SelectedCode = $env:CODE_3 }
-          elseif ($env:JOB_ID -eq 5) { $SelectedCode = $env:CODE_4 }
-          else { Write-Error "Invalid Job ID"; exit 1 }
 
-          if (-not $SelectedCode) { Write-Error "❌ Code not found for Job $env:JOB_ID. Check your Secrets."; exit 1 }
+
+      # -----------------------------------------------------------
+
+      # خطوة 2: إدارة العداد
+
+      # -----------------------------------------------------------
+
+      - name: Manage External Counter (Gist)
+
+        shell: pwsh
+
+        env:
+
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+
+          GIST_ID: ${{ secrets.GIST_ID }}
+
+        run: |
+
+          $headers = @{ "Authorization" = "token $env:GIST_TOKEN"; "Accept" = "application/vnd.github.v3+json" }
+
+          $url = "https://api.github.com/gists/$env:GIST_ID"
+
+          $success = $false
+
+          
+
+          while (-not $success) {
+
+              try {
+
+                  $response = Invoke-RestMethod -Uri $url -Headers $headers -Method Get -ErrorAction Stop
+
+                  $currentCount = [int]$response.files."counter.txt".content
+
+                  $newCount = $currentCount + 1
+
+                  
+
+                  $body = @{ files = @{ "counter.txt" = @{ content = [string]$newCount } } } | ConvertTo-Json -Depth 10
+
+                  Invoke-RestMethod -Uri $url -Headers $headers -Method Patch -Body $body -ErrorAction Stop
+
+                  
+
+                  echo "DEVICE_NUM=$newCount" >> $env:GITHUB_ENV
+
+                  Write-Host "✅ Counter Updated to: $newCount"
+
+                  $success = $true
+
+              }
+
+              catch {
+
+                  Start-Sleep -Seconds (Get-Random -Minimum 1 -Maximum 5)
+
+              }
+
+          }
+
+
+
+      # -----------------------------------------------------------
+
+      # خطوة 3: تفعيل الريموت ديسكتوب
+
+      # -----------------------------------------------------------
+
+      - name: Start Chrome Remote Desktop
+
+        shell: pwsh
+
+        env:
+
+          CRD_CODE: ${{ secrets.CRD_CODE }}
+
+          CRD_PIN: ${{ secrets.CRD_PIN }}
+
+        run: |
 
           $exePath = "${Env:PROGRAMFILES(X86)}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe"
-          $UniqueName = "${{ github.actor }}-Machine-${env:JOB_ID}"
+
+          $UniqueName = "${{ github.actor }}-Machine-${{ env.DEVICE_NUM }}"
+
           
-          Write-Host "🚀 STARTING RDP SERVICE: $UniqueName using Code for Job $env:JOB_ID"
-          & $exePath --code="$SelectedCode" --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --name="$UniqueName" --pin=$env:PIN
+
+          Write-Host "🚀 STARTING RDP SERVICE: $UniqueName"
+
+          & $exePath --code="$env:CRD_CODE" --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --name="$UniqueName" --pin=$env:CRD_PIN
+
+
 
       # -----------------------------------------------------------
-      # خطوة 3: تحميل الملف الخاص بالجوب وفك الضغط
+
+      # خطوة 4: تحميل وفك الضغط (تم إصلاح الخطأ هنا)
+
       # -----------------------------------------------------------
-      - name: Download and Extract Large File
+
+      - name: Download and Extract OS
+
         shell: cmd
+
         run: |
+
           @echo off
+
           cd /d "%USERPROFILE%\Desktop"
-          
-          :: استلام الرابط من الماتريكس
-          set "FILE_URL=${{ matrix.url }}"
-          
-          echo ⬇️ Downloading file for Machine ${{ matrix.id }}...
+
+          set "FILE_URL=https://huggingface.co/datasets/gfdg34fsd/rdp/resolve/main/wino.zip"
+
+          echo ⬇️ Downloading large file...
+
           curl -L -o BigFile.zip "%FILE_URL%"
-          
+
           echo 📦 Extracting files...
+
           7z x BigFile.zip -y
-          
+
           del BigFile.zip
+
           echo ✅ Download and Extraction Complete.
 
-      # -----------------------------------------------------------
-      # خطوة 4: تشغيل واجهة فيرتوال بوكس (بدون تشغيل نظام)
-      # -----------------------------------------------------------
-      - name: Launch VirtualBox GUI
-        shell: pwsh
-        run: |
-           # تشغيل الواجهة فقط لتكون جاهزة عند الدخول
-           $vboxGui = "$env:ProgramFiles\Oracle\VirtualBox\VirtualBox.exe"
-           if (Test-Path $vboxGui) {
-               Start-Process -FilePath $vboxGui
-               Write-Host "✅ VirtualBox GUI Started."
-           }
+
+
+
 
       # -----------------------------------------------------------
-      # خطوة 5: البقاء (Keep Alive)
+
+      # خطوة 6: البقاء
+
       # -----------------------------------------------------------
+
       - name: Keep Alive
+
         shell: pwsh
+
         run: |
-          Write-Host "✅ System Ready. Login via Chrome Remote Desktop."
+
+          Write-Host "✅ Both VMs are running..."
+
           while ($true) { Start-Sleep -Seconds 300 }
